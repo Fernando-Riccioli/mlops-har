@@ -1,0 +1,8 @@
+# Dipendenze dirette. Le versioni esatte usate sono in requirements.lock (pip freeze).
+mlflow>=3.0
+scikit-learn
+pandas
+pyarrow
+dvc
+wandb
+pytest

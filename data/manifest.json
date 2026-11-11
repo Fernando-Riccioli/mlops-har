@@ -1,0 +1,14 @@
+{
+  "cartella": "data/processed",
+  "dataset_sha256": "a52a6144a99140398198555a5e4966237c17d781a6c4f55cd41a81864535e4ac",
+  "file": {
+    "test.parquet": {
+      "sha256": "d758b71220073769e0ba610630a5606856f4d4b2724bff9744101d1ecbe44153",
+      "bytes": 15221208
+    },
+    "train.parquet": {
+      "sha256": "4905e7fc8bc8c89f1f3a1a5f7f9dd55f3d5bbf9b8ac8988a2c8152bcca1d7492",
+      "bytes": 37450897
+    }
+  }
+}
