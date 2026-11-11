@@ -12,7 +12,7 @@ tracciare le run, registrare e promuovere il modello e versionare i dati.
 | Experiment tracking | MLflow (SQLite locale) | `src/har/train.py` |
 | Model Registry, alias, gate | MLflow | `src/har/registry.py`, `MODEL_CARD.md` |
 | Seconda dashboard | Weights & Biases (cloud) | `train.py --wandb` |
-| Test | pytest | `tests/` |
+| Test e CI | pytest, smoke test, GitHub Actions | `tests/`, `scripts/smoke_test.py`, `.github/workflows/ci.yml` |
 
 ## Rifare tutto da zero
 
@@ -92,11 +92,23 @@ Con `--wandb` la stessa run finisce **sia** in MLflow **sia** nel progetto W&B `
 con la stessa config (hash dei dati incluso) e l'id della run MLflow nel summary, così le due
 dashboard si incrociano.
 
-### 5. Test
+### 5. Test e CI
 
 ```bash
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest -q               # unit test (manifest)
+.venv/bin/python -m scripts.smoke_test      # hash dei dati + soglia del modello
 ```
+
+La CI (`.github/workflows/ci.yml`, GitHub Actions) gira a ogni push su `main` e a ogni PR,
+installando le versioni esatte di `requirements.lock`. Ha due job:
+- **test**: pytest, senza dati.
+- **smoke**: parte solo se `test` passa. Riscarica UCI HAR (l'archivio è in cache) e
+  controlla due cose. La prima: i dati riconvertiti hanno lo **stesso hash** di
+  `data/manifest.json`, cioè la pipeline dei dati è riproducibile su un'altra macchina. La
+  seconda: un training breve supera **F1 macro ≥ 0,90**, così una modifica che rompe il
+  modello rende la CI rossa prima del merge.
+
+Il training dello smoke test usa un registro MLflow temporaneo e non tocca quello del progetto.
 
 ## Risultati (11-11-2026)
 
@@ -138,6 +150,4 @@ Unity Catalog come Model Registry.
 
 ## Prossimi passi
 
-- CI (GitHub Actions): pytest e uno *smoke test* del modello (training breve e controllo che
-  F1 sia sopra una soglia).
 - Un container che serve `@produzione` (`mlflow models serve` o FastAPI).

@@ -73,6 +73,7 @@ def main() -> None:
     p.add_argument("--seme", type=int, default=0)
     p.add_argument("--cv", type=int, default=5, help="fold di GroupKFold per soggetto")
     p.add_argument("--wandb", action="store_true", help="registra la run anche su W&B")
+    p.add_argument("--esito", type=Path, help="scrive run_id e metriche in questo file JSON")
     a = p.parse_args()
 
     Xtr, ytr, gruppi, Xte, yte = carica()
@@ -130,7 +131,10 @@ def main() -> None:
             run_wandb.summary["mlflow_run_id"] = run.info.run_id
             run_wandb.finish()
 
-        print(json.dumps({"run_id": run.info.run_id, **metriche}, indent=2))
+        esito = {"run_id": run.info.run_id, **metriche}
+        print(json.dumps(esito, indent=2))
+        if a.esito:
+            a.esito.write_text(json.dumps(esito, indent=2) + "\n")
 
 
 if __name__ == "__main__":

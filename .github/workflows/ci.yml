@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: pip install -r requirements.lock
+      - run: python -m pytest -q
+
+  smoke:
+    name: Data + model smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: pip install -r requirements.lock
+      # The raw UCI archive changes only if the download script changes.
+      - uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: uci-har-raw-${{ hashFiles('scripts/scarica_dati.py') }}
+      - name: Download and convert UCI HAR
+        run: python scripts/scarica_dati.py
+      - name: Check data hash and model quality gate
+        run: python -m scripts.smoke_test
