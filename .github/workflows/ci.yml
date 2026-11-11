@@ -44,3 +44,40 @@ jobs:
         run: python scripts/scarica_dati.py
       - name: Check data hash and model quality gate
         run: python -m scripts.smoke_test
+
+  serving:
+    name: Train, register, promote, build and test the container
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: pip install -r requirements.lock
+      - uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: uci-har-raw-${{ hashFiles('scripts/scarica_dati.py') }}
+      - name: Download and convert UCI HAR
+        run: python scripts/scarica_dati.py
+      # A fresh MLflow registry (mlflow.db in the workspace) for this run only.
+      - name: Train
+        run: python -m src.har.train --modello logreg --C 1.0
+      - name: Register as candidate
+        run: python -m src.har.registry candidata
+      - name: Promote to production (fails if the gate rejects it)
+        run: python -m src.har.registry promuovi
+      - name: Export @produzione
+        run: python -m scripts.esporta_modello
+      - name: Build image
+        run: docker build -t har-classificatore:${{ github.sha }} serving/
+      - name: Run container
+        run: docker run -d --name har -p 127.0.0.1:8080:8080 har-classificatore:${{ github.sha }}
+      - name: Test container
+        run: python -m scripts.prova_container --attendi 60
+      - name: Container logs
+        if: always()
+        run: docker logs har || true

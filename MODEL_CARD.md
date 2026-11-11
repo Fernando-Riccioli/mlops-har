@@ -1,29 +1,35 @@
 # Model card: har-classificatore
 
-**Compito.** Riconoscere 6 attività umane (WALKING, WALKING_UPSTAIRS, WALKING_DOWNSTAIRS,
-SITTING, STANDING, LAYING) da finestre di 2,56 s di accelerometro e giroscopio di uno
-smartphone in vita (50 Hz), descritte dalle 561 feature calcolate dagli autori del dataset.
+**English** · [Italiano](MODEL_CARD.it.md)
 
-**Dati.** UCI HAR, *Human Activity Recognition Using Smartphones* (Anguita et al., 2013),
-licenza CC BY 4.0. 30 volontari di 19-48 anni, un solo modello di telefono (Samsung Galaxy S II).
-Split ufficiale per soggetto: 21 in train (7352 finestre), 9 in test (2947 finestre).
-La versione esatta dei dati è nell'hash `dataset_sha256`, salvato come tag su ogni versione.
+**Task.** Recognise 6 human activities (WALKING, WALKING_UPSTAIRS, WALKING_DOWNSTAIRS,
+SITTING, STANDING, LAYING) from 2.56 s windows of accelerometer and gyroscope data from a
+waist-mounted smartphone (50 Hz), described by the 561 features computed by the dataset
+authors.
 
-**Valutazione.**
-- Metrica di promozione: F1 macro sul test (i 9 soggetti mai visti). Macro perché le classi
-  pesano uguale, anche se la frequenza è diversa.
-- Controllo di stabilità: F1 macro in validazione incrociata *per soggetto* (GroupKFold a 5
-  fold sul train), così un soggetto non sta mai sia in train sia in validazione.
-- Gate di produzione: F1 macro test ≥ 0,90 e non peggiore della versione in produzione.
+**Data.** UCI HAR, *Human Activity Recognition Using Smartphones* (Anguita et al., 2013),
+CC BY 4.0 licence. 30 volunteers aged 19-48, a single phone model (Samsung Galaxy S II).
+Official per-subject split: 21 subjects in train (7352 windows), 9 in test (2947 windows).
+The exact data version is the `dataset_sha256` hash, stored as a tag on every model version.
 
-**Limiti noti.**
-- Un solo telefono e una sola posizione (vita): su altri dispositivi o in tasca/mano la
-  qualità non è misurata.
-- 30 soggetti, giovani adulti: la generalizzazione a anziani o a persone con disturbi del
-  movimento non è misurata.
-- La confusione tipica è fra SITTING e STANDING (posture statiche simili).
-- Le feature sono quelle precalcolate del dataset: in produzione andrebbe riprodotta
-  esattamente la stessa catena di estrazione.
+**Evaluation.**
+- Promotion metric: macro-F1 on the test set (the 9 unseen subjects). Macro, so that every
+  class weighs the same despite different frequencies.
+- Stability check: macro-F1 in *per-subject* cross-validation (5-fold GroupKFold on train),
+  so no subject is ever in both training and validation.
+- Production gate: test macro-F1 ≥ 0.90 and not worse than the version in production.
 
-**Uso previsto.** Esercizio didattico di MLOps (tracking, registry, versionamento dei dati).
-Non per uso clinico né per decisioni sulle persone.
+**Known limitations.**
+- One phone and one position (waist): quality on other devices, or in a pocket or hand, is
+  not measured.
+- 30 young adult subjects: generalisation to older people or to people with movement
+  disorders is not measured.
+- The most frequent error is between static postures. For v1 (logistic regression), on the
+  2947 test windows, 58 SITTING windows are predicted as STANDING and 14 the other way round:
+  72 of the 132 errors. The second group is stairs: 23 WALKING_UPSTAIRS predicted as WALKING
+  and 18 WALKING_DOWNSTAIRS predicted as WALKING_UPSTAIRS.
+- The features are the dataset's precomputed ones: in production the exact same extraction
+  chain would have to be reproduced.
+
+**Intended use.** A learning exercise in MLOps (tracking, registry, data versioning).
+Not for clinical use or for decisions about people.

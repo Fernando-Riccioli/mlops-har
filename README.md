@@ -1,54 +1,59 @@
-# mlops-personale: riconoscimento attività (UCI HAR) con MLflow, W&B e DVC
+# mlops-har: human activity recognition (UCI HAR) with MLflow, W&B and DVC
 
-Progetto personale per imparare MLOps su dati pubblici. Il modello è volutamente
-semplice (scikit-learn su CPU): il centro è il **ciclo di vita** del modello, cioè
-tracciare le run, registrare e promuovere il modello e versionare i dati.
+**English** · [Italiano](README.it.md)
 
-| Pezzo | Strumento | Dove |
+A personal project to practise MLOps on public data. The model is deliberately simple
+(scikit-learn on CPU): the focus is the model **lifecycle**, that is experiment tracking,
+model registration and promotion, data versioning, testing and serving.
+
+| Piece | Tool | Where |
 |---|---|---|
-| Dati e split per soggetto | UCI HAR, parquet | `scripts/scarica_dati.py` |
-| Versionamento dati (A) | DVC + remote locale | `data/*.dvc`, `.dvc/config` |
-| Versionamento dati (B) | manifest sha256 nella config di ogni run | `src/har/manifest.py` |
-| Experiment tracking | MLflow (SQLite locale) | `src/har/train.py` |
-| Model Registry, alias, gate | MLflow | `src/har/registry.py`, `MODEL_CARD.md` |
-| Seconda dashboard | Weights & Biases (cloud) | `train.py --wandb` |
-| Test e CI | pytest, smoke test, GitHub Actions | `tests/`, `scripts/smoke_test.py`, `.github/workflows/ci.yml` |
-| Serving | FastAPI + Docker, modello @produzione | `serving/`, `scripts/esporta_modello.py` |
+| Data and per-subject split | UCI HAR, parquet | `scripts/scarica_dati.py` |
+| Data versioning (A) | DVC + local remote | `data/*.dvc`, `.dvc/config.local` |
+| Data versioning (B) | sha256 manifest in every run's config | `src/har/manifest.py` |
+| Experiment tracking | MLflow (local SQLite) | `src/har/train.py` |
+| Model Registry, aliases, gate | MLflow | `src/har/registry.py`, `MODEL_CARD.md` |
+| Second dashboard | Weights & Biases (cloud) | `train.py --wandb` |
+| Tests and CI | pytest, smoke test, GitHub Actions | `tests/`, `scripts/smoke_test.py`, `.github/workflows/ci.yml` |
+| Serving | FastAPI + Docker, @produzione model | `serving/`, `scripts/esporta_modello.py` |
 
-## Rifare tutto da zero
+The code uses Italian names. The ones you will type are listed in
+[Italian names](#italian-names) at the end.
+
+## Reproduce everything from scratch
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.lock      # versioni esatte (o requirements.txt)
+.venv/bin/pip install -r requirements.lock      # exact versions (or requirements.txt)
 ```
 
-### 1. Dati
+### 1. Data
 
-Due strade, a scelta:
+Two options:
 
 ```bash
-.venv/bin/python scripts/scarica_dati.py         # riscarica da UCI e riconverte
-# oppure, con un remote DVC (qui è una cartella locale, fuori da git):
+.venv/bin/python scripts/scarica_dati.py         # download from UCI and convert
+# or, with a DVC remote (here a local folder, outside git):
 .venv/bin/dvc remote add --local -d locale ~/dvc-remote/mlops-personale
 .venv/bin/dvc pull
 ```
 
-Il remote sta in `.dvc/config.local`, che non va in git: ognuno usa il proprio (una
-cartella, S3, Azure Blob, GCS). Nel repo restano solo i puntatori `data/*.dvc`.
+The remote lives in `.dvc/config.local`, which is not committed: everyone uses their own
+(a folder, S3, Azure Blob, GCS). The repository only holds the `data/*.dvc` pointers.
 
-Poi si controlla che i dati siano esattamente quelli attesi:
+Then check that the data are exactly the expected ones:
 
 ```bash
-.venv/bin/dvc status                             # "up to date" = stessi byte del .dvc in git
-.venv/bin/python -m src.har.manifest data/processed   # confronta dataset_sha256 con la run
+.venv/bin/dvc status                             # "up to date" = same bytes as the .dvc in git
+.venv/bin/python -m src.har.manifest data/processed   # compare dataset_sha256 with the run
 ```
 
-Lo split è quello ufficiale **per soggetto**: 21 persone in train (7352 finestre) e 9 in test
-(2947). Anche la validazione incrociata usa `GroupKFold` per soggetto. Se una persona
-finisse sia in train sia in validazione, la metrica premierebbe un modello che riconosce *chi*
-cammina e non *come*: è leakage.
+The split is the official **per-subject** one: 21 people in train (7352 windows) and 9 in
+test (2947). Cross-validation also uses `GroupKFold` by subject. If one person were both in
+train and in validation, the metric would reward a model that recognises *who* is walking
+rather than *how*: that is leakage.
 
-### 2. Training con tracking MLflow
+### 2. Training with MLflow tracking
 
 ```bash
 .venv/bin/python -m src.har.train --modello logreg --C 1.0
@@ -56,124 +61,140 @@ cammina e non *come*: è leakage.
 .venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db   # http://127.0.0.1:5000
 ```
 
-Ogni run registra:
-- **parametri**: gli iperparametri, il seme, `dataset_sha256` e `git_commit`, che finisce in
-  `-dirty` se ci sono modifiche non committate;
-- **metriche**: F1 macro e accuratezza sul test, F1 macro in validazione incrociata (media e std);
-- **artefatti**: il modello con la firma di input e output, la matrice di confusione e il manifest.
+Every run logs:
+- **parameters**: hyperparameters, seed, `dataset_sha256` and `git_commit` (suffixed with
+  `-dirty` when there are uncommitted changes);
+- **metrics**: test macro-F1 and accuracy, cross-validated macro-F1 (mean and std);
+- **artifacts**: the model with its input/output signature, the confusion matrix and the
+  dataset manifest.
 
-Nella UI si selezionano le run e si usa **Compare**: parametri affiancati e grafici fra metriche.
+In the UI, select runs and use **Compare** for side-by-side parameters and metric plots.
 
 ### 3. Model Registry
 
 ```bash
-.venv/bin/python -m src.har.registry candidata   # registra la run migliore, alias @candidata
-.venv/bin/python -m src.har.registry promuovi    # @candidata -> @produzione se passa il gate
+.venv/bin/python -m src.har.registry candidata   # register the best run, alias @candidata
+.venv/bin/python -m src.har.registry promuovi    # @candidata -> @produzione if it passes the gate
 .venv/bin/python -m src.har.registry stato
-.venv/bin/python -m scripts.prova_produzione     # carica models:/har-classificatore@produzione
+.venv/bin/python -m scripts.prova_produzione     # load models:/har-classificatore@produzione
 ```
 
-- **Versione**: ogni registrazione crea una versione numerata e immutabile, collegata alla run,
-  quindi anche ai parametri e all'hash dei dati. I tag della versione ripetono
-  `dataset_sha256` e `git_commit`.
-- **Alias**: etichette mobili. Chi serve il modello carica `@produzione` e non sa il numero
-  di versione. Promuovere significa spostare l'alias; per il rollback basta rimetterlo sulla
-  versione precedente. Gli alias sostituiscono i vecchi *stage* (Staging/Production), deprecati.
-- **Gate** (in `registry.py`): F1 macro test ≥ 0,90 e non peggiore della produzione.
-- **Model card**: `MODEL_CARD.md` è la descrizione del registered model (compito, dati, limiti).
+- **Version**: each registration creates an immutable, numbered version linked to its run,
+  and so to its parameters and data hash. Version tags repeat `dataset_sha256` and
+  `git_commit`.
+- **Aliases**: movable labels. Whoever serves the model loads `@produzione` and never needs
+  the version number. Promoting means moving the alias; rolling back means moving it to the
+  previous version. Aliases replace the deprecated *stages* (Staging/Production).
+- **Gate** (in `registry.py`): test macro-F1 ≥ 0.90 and not worse than production.
+- **Model card**: `MODEL_CARD.md` is the registered model's description (task, data,
+  limitations).
 
-### 4. W&B sulle stesse run
+### 4. W&B on the same runs
 
 ```bash
-.venv/bin/wandb login                            # una volta, con la TUA chiave API
+.venv/bin/wandb login                            # once, with YOUR API key
 .venv/bin/python -m src.har.train --modello logreg --C 1.0 --wandb
 ```
 
-Con `--wandb` la stessa run finisce **sia** in MLflow **sia** nel progetto W&B `mlops-har`,
-con la stessa config (hash dei dati incluso) e l'id della run MLflow nel summary, così le due
-dashboard si incrociano.
+With `--wandb` the same run goes to **both** MLflow **and** the W&B project `mlops-har`,
+with the same config (data hash included) and the MLflow run id in the W&B summary, so the
+two dashboards can be cross-referenced.
 
-### 5. Test e CI
+### 5. Tests and CI
 
 ```bash
-.venv/bin/python -m pytest -q               # unit test (manifest)
-.venv/bin/python -m scripts.smoke_test      # hash dei dati + soglia del modello
+.venv/bin/python -m pytest -q               # unit tests (manifest)
+.venv/bin/python -m scripts.smoke_test      # data hash + model quality threshold
 ```
 
-La CI (`.github/workflows/ci.yml`, GitHub Actions) gira a ogni push su `main` e a ogni PR,
-installando le versioni esatte di `requirements.lock`. Ha due job:
-- **test**: pytest, senza dati.
-- **smoke**: parte solo se `test` passa. Riscarica UCI HAR (l'archivio è in cache) e
-  controlla due cose. La prima: i dati riconvertiti hanno lo **stesso hash** di
-  `data/manifest.json`, cioè la pipeline dei dati è riproducibile su un'altra macchina. La
-  seconda: un training breve supera **F1 macro ≥ 0,90**, così una modifica che rompe il
-  modello rende la CI rossa prima del merge.
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs on every push to `main` and on every
+pull request, installing the exact versions from `requirements.lock`. It has three chained
+jobs:
+- **test**: pytest, no data needed.
+- **smoke**: re-downloads UCI HAR (the archive is cached) and checks two things. First, the
+  converted data have the **same hash** as `data/manifest.json`, so the data pipeline is
+  reproducible on another machine. Second, a short training reaches **macro-F1 ≥ 0.90**, so
+  a change that breaks the model turns CI red before merging. This training uses a temporary
+  MLflow registry.
+- **serving**: replays the whole lifecycle on a fresh MLflow registry. It trains the model,
+  registers it as `@candidata`, promotes it to `@produzione` only if it passes the gate,
+  exports it, builds the Docker image, starts the container and tests it with
+  `scripts/prova_container.py`.
 
-Il training dello smoke test usa un registro MLflow temporaneo e non tocca quello del progetto.
-
-### 6. Servire il modello in un container
+### 6. Serving the model in a container
 
 ```bash
 .venv/bin/python -m scripts.esporta_modello          # @produzione -> serving/model/ + model_info.json
 docker build -t har-classificatore:v1 serving/
-docker run --rm -d --name har -p 8080:8080 har-classificatore:v1
-.venv/bin/python -m scripts.prova_container          # health, info, predict, input sbagliato
+docker run --rm -d --name har -p 127.0.0.1:8080:8080 har-classificatore:v1
+.venv/bin/python -m scripts.prova_container          # health, info, predict, bad input
 docker stop har
 ```
 
-- L'immagine contiene **una** versione del modello, esportata dal registry. Il container non
-  parla con MLflow e `/info` dice quale versione serve, con hash dei dati e commit.
-  Per aggiornarlo si sposta l'alias, si riesporta e si ricostruisce l'immagine.
-- Il server è FastAPI e carica il modello come *pyfunc* MLflow, quindi lo **schema registrato**
-  (561 feature con nome e tipo) viene controllato a ogni richiesta. Un input sbagliato
-  restituisce 422 invece di una predizione sbagliata.
-- `mlflow-skinny` al posto di `mlflow`: serve solo caricare il modello, non il server di
-  tracking. Il container gira senza root e ha un `HEALTHCHECK` su `/health`.
+- The image holds **one** model version, exported from the registry. The container does not
+  talk to MLflow, and `/info` reports which version it serves, with data hash and commit.
+  To update it: move the alias, re-export, rebuild the image.
+- The server is FastAPI and loads the model as an MLflow *pyfunc*, so the **registered
+  schema** (561 named, typed features) is enforced on every request. Bad input gets a 422
+  instead of a wrong prediction.
+- `mlflow-skinny` instead of `mlflow`: the container only needs to load the model, not the
+  tracking server. It runs as a non-root user and has a `HEALTHCHECK` on `/health`.
 
 ```bash
 curl -s localhost:8080/info
 curl -s -X POST localhost:8080/predict -H 'Content-Type: application/json' \
-     -d '{"instances": [[...561 numeri...]]}'
+     -d '{"instances": [[...561 numbers...]]}'
 ```
 
-## Risultati (11-11-2026)
+## Results (2026-11-11)
 
-Dati UCI HAR, split ufficiale per soggetto, `dataset_sha256 = a52a6144a991…`. Una run per
-configurazione, CPU, seme 0. F1 = F1 macro sulle 6 classi.
+UCI HAR, official per-subject split, `dataset_sha256 = a52a6144a991…`. One run per
+configuration, CPU, seed 0. F1 = macro-F1 over the 6 classes.
 
-| Modello | F1 test (9 soggetti) | Accuratezza test | F1 CV per soggetto (5 fold, media ± std) |
+| Model | Test F1 (9 subjects) | Test accuracy | Per-subject CV F1 (5 folds, mean ± std) |
 |---|---|---|---|
-| StandardScaler + LogisticRegression C=1 | 0,955 | 0,955 | 0,933 ± 0,042 |
-| RandomForest 200 alberi | 0,926 | 0,928 | 0,916 ± 0,045 |
+| StandardScaler + LogisticRegression C=1 | 0.955 | 0.955 | 0.933 ± 0.042 |
+| RandomForest, 200 trees | 0.926 | 0.928 | 0.916 ± 0.045 |
 
-La regressione logistica è in produzione (v1). La random forest è stata registrata come
-candidata (v2) ed è stata **bocciata dal gate** perché non migliora la produzione. La std
-della CV, circa 0,04, viene dalla differenza fra soggetti: con una sola run la differenza fra i
-due modelli sul test (0,03) è dello stesso ordine e non va letta come definitiva.
+Logistic regression is in production (v1). The random forest was registered as a candidate
+(v2) and **rejected by the gate** because it does not improve on production. The CV std of
+about 0.04 comes from differences between subjects: with a single run, the 0.03 test gap
+between the two models is of the same order and should not be read as final.
 
-## DVC o manifest sha256? Il confronto
+Same data (same hash), same code, same package versions: logistic regression scores test F1
+0.9550 on the workstation and 0.9544 on the GitHub Actions runner. The difference comes from
+floating-point arithmetic on different CPUs and numerical libraries. That is why the gate
+uses a threshold rather than an exact value.
 
-| | DVC | Manifest sha256 |
+## DVC or a sha256 manifest? A comparison
+
+| | DVC | sha256 manifest |
 |---|---|---|
-| Cosa salva in git | un puntatore `.dvc` (md5 della cartella) | niente di obbligatorio: l'hash va nei parametri di ogni run |
-| Recupera i dati di una versione vecchia | **sì**: `git checkout <commit> && dvc checkout` | **no**: dimostra quali dati erano, ma non li ricostruisce |
-| Dove stanno i dati | cache `.dvc/cache` + remote (cartella, S3, Azure, GCS…) | dove già sono |
-| Costo | uno strumento in più, la cache occupa spazio (qui circa 320 MB in più) | circa 40 righe di Python, nessuna dipendenza |
-| Pipeline | `dvc.yaml` rilancia solo i passi i cui input sono cambiati | nessuna |
-| Legame con la run | indiretto: run → commit git → file `.dvc` | diretto: l'hash è un parametro della run, filtrabile in MLflow |
+| What goes into git | a `.dvc` pointer (folder md5) | nothing required: the hash goes into each run's parameters |
+| Restores the data of an old version | **yes**: `git checkout <commit> && dvc checkout` | **no**: proves which data were used, but cannot rebuild them |
+| Where the data live | `.dvc/cache` + a remote (folder, S3, Azure, GCS…) | wherever they already are |
+| Cost | one more tool; the cache takes space (about 320 MB extra here) | about 40 lines of Python, no dependencies |
+| Pipelines | `dvc.yaml` reruns only the stages whose inputs changed | none |
+| Link to the run | indirect: run → git commit → `.dvc` file | direct: the hash is a run parameter, searchable in MLflow |
 
-In questo progetto si usano **entrambi**: DVC per poter riavere i dati, l'hash nella run per
-vedere a colpo d'occhio, in MLflow e W&B, quali run hanno visto gli stessi dati.
+This project uses **both**: DVC to get the data back, the hash in each run to see at a
+glance, in MLflow and W&B, which runs saw the same data.
 
-Trappola osservata: il parquet contiene la versione di pyarrow che l'ha scritto. Se si
-riconverte con un altro pyarrow, i numeri sono identici ma l'hash dei file cambia. Per
-confrontare *il contenuto* servirebbe un hash dei dati letti (per esempio
-`pandas.util.hash_pandas_object`). Per confrontare *i file* va bene così.
+A pitfall I hit: a parquet file records the pyarrow version that wrote it. Converting again
+with another pyarrow gives identical numbers but a different file hash. To compare
+*content* you would hash the loaded data (for example with
+`pandas.util.hash_pandas_object`). To compare *files* this approach is fine: with the
+versions pinned in the lock file, the hash also matches on the GitHub Actions runner.
 
-Su Databricks lo stesso ruolo lo svolgono le **tabelle Delta**: il *time travel*
-(`VERSION AS OF`) permette di rileggere una versione passata, e MLflow è già integrato, con
-Unity Catalog come Model Registry.
+On Databricks the same role is played by **Delta tables**: *time travel*
+(`VERSION AS OF`) reads a past version, and MLflow is built in, with Unity Catalog as the
+Model Registry.
 
-## Prossimi passi
+## Italian names
 
-- Un container che serve `@produzione` (`mlflow models serve` o FastAPI).
+| Name | Meaning |
+|---|---|
+| `--modello`, `--seme` | model, seed |
+| `candidata`, `produzione` | aliases: candidate, production |
+| `promuovi`, `stato` | promote, status |
+| `scarica_dati`, `esporta_modello`, `prova_container` | download data, export model, test container |
