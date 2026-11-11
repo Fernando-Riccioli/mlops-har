@@ -1,0 +1,11 @@
+# Solo ciò che serve a SERVIRE il modello (niente DVC, W&B, server di tracking).
+# Versioni allineate a requirements.lock e al requirements.txt salvato con il modello.
+mlflow-skinny==3.18.0
+scikit-learn==1.9.1
+skops==0.16.0
+scipy==1.18.1
+numpy==2.5.4
+pandas==3.1.1
+fastapi==0.162.4
+uvicorn==0.54.0
+pydantic==2.14.3

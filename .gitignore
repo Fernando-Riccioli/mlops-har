@@ -6,3 +6,5 @@ mlartifacts/
 mlflow.db
 wandb/
 .pytest_cache/
+# Modello esportato dal registry per l'immagine Docker: si rigenera, non si versiona in git.
+serving/model/

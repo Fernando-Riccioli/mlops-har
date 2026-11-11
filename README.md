@@ -13,6 +13,7 @@ tracciare le run, registrare e promuovere il modello e versionare i dati.
 | Model Registry, alias, gate | MLflow | `src/har/registry.py`, `MODEL_CARD.md` |
 | Seconda dashboard | Weights & Biases (cloud) | `train.py --wandb` |
 | Test e CI | pytest, smoke test, GitHub Actions | `tests/`, `scripts/smoke_test.py`, `.github/workflows/ci.yml` |
+| Serving | FastAPI + Docker, modello @produzione | `serving/`, `scripts/esporta_modello.py` |
 
 ## Rifare tutto da zero
 
@@ -109,6 +110,31 @@ installando le versioni esatte di `requirements.lock`. Ha due job:
   modello rende la CI rossa prima del merge.
 
 Il training dello smoke test usa un registro MLflow temporaneo e non tocca quello del progetto.
+
+### 6. Servire il modello in un container
+
+```bash
+.venv/bin/python -m scripts.esporta_modello          # @produzione -> serving/model/ + model_info.json
+docker build -t har-classificatore:v1 serving/
+docker run --rm -d --name har -p 8080:8080 har-classificatore:v1
+.venv/bin/python -m scripts.prova_container          # health, info, predict, input sbagliato
+docker stop har
+```
+
+- L'immagine contiene **una** versione del modello, esportata dal registry. Il container non
+  parla con MLflow e `/info` dice quale versione serve, con hash dei dati e commit.
+  Per aggiornarlo si sposta l'alias, si riesporta e si ricostruisce l'immagine.
+- Il server è FastAPI e carica il modello come *pyfunc* MLflow, quindi lo **schema registrato**
+  (561 feature con nome e tipo) viene controllato a ogni richiesta. Un input sbagliato
+  restituisce 422 invece di una predizione sbagliata.
+- `mlflow-skinny` al posto di `mlflow`: serve solo caricare il modello, non il server di
+  tracking. Il container gira senza root e ha un `HEALTHCHECK` su `/health`.
+
+```bash
+curl -s localhost:8080/info
+curl -s -X POST localhost:8080/predict -H 'Content-Type: application/json' \
+     -d '{"instances": [[...561 numeri...]]}'
+```
 
 ## Risultati (11-11-2026)
 
